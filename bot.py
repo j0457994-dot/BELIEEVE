@@ -8,12 +8,18 @@ import html
 import re
 from collections import OrderedDict, deque
 
+# -------------------
+# Environment
+# -------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
     raise SystemExit("❌ Missing TELEGRAM_TOKEN or TELEGRAM_CHAT_ID")
 
+# -------------------
+# Subreddits
+# -------------------
 SUBREDDITS = [
     "CryptoCurrency","Bitcoin","ethereum","binance","CryptoMarkets",
     "CoinBase","Kraken","CoinbaseSupport","kucoin","Gemini",
@@ -21,6 +27,9 @@ SUBREDDITS = [
     "solana","dogecoin","Ripple","polkadot","UniSwap"
 ]
 
+# -------------------
+# Keywords
+# -------------------
 KEYWORDS = [
     "problem","issue","error","bug","glitch","crash","not working",
     "failed","lost","scammed","hacked","stolen","fraud",
@@ -30,6 +39,9 @@ KEYWORDS = [
     "exploit","attack","lawsuit","regulation"
 ]
 
+# -------------------
+# Settings
+# -------------------
 CHECK_INTERVAL = 120
 SUB_DELAY = 2
 HEARTBEAT_INTERVAL = 1800
@@ -55,6 +67,9 @@ last_heartbeat = 0
 last_send = 0
 backoff = 0
 
+# -------------------
+# Helpers
+# -------------------
 def rss_url(sub):
     return f"https://www.reddit.com/r/{sub}/new/.rss"
 
@@ -64,7 +79,12 @@ def post_id(entry):
     ).hexdigest()
 
 def safe(text):
-    return html.escape(text or "")
+    if not text:
+        return ""
+    text = html.unescape(text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return html.escape(text)
 
 def prune_seen():
     while len(seen) > MAX_SEEN:
@@ -114,9 +134,15 @@ def send_worker():
         queue.appendleft(msg)
         backoff = min(backoff * 2 if backoff else BACKOFF_START, BACKOFF_MAX)
 
+# -------------------
+# Startup
+# -------------------
 print("🚀 Bot started with queue + backoff")
 enqueue("🚀 Reddit crypto monitoring bot started")
 
+# -------------------
+# Main loop
+# -------------------
 while True:
     now = time.time()
 
@@ -127,13 +153,14 @@ while True:
     for sub in SUBREDDITS:
         try:
             feed = feedparser.parse(rss_url(sub))
+
             for e in feed.entries[:15]:
                 pid = post_id(e)
                 if pid in seen:
                     continue
 
-                title = e.get("title","")
-                summary = e.get("summary","")
+                title = safe(e.get("title", ""))
+                summary = safe(e.get("summary", ""))
                 text = f"{title} {summary}"
 
                 match = keyword_regex.search(text)
@@ -141,11 +168,12 @@ while True:
                     continue
 
                 snippet = summary[:300] + ("..." if len(summary) > 300 else "")
+
                 msg = (
                     f"🔔 <b>Keyword:</b> {safe(match.group(1))}\n"
                     f"<b>Subreddit:</b> r/{safe(sub)}\n"
-                    f"<b>Title:</b> {safe(title)}\n"
-                    f"<b>Snippet:</b> {safe(snippet)}\n"
+                    f"<b>Title:</b> {title}\n"
+                    f"<b>Snippet:</b> {snippet}\n"
                     f"<b>Link:</b> {e.get('link','')}"
                 )
 
